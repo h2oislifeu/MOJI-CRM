@@ -1,0 +1,95 @@
+// Functions:
+// Retrieve data from Acuity via Webhook, then set a variable to store the appointment data and map it to the API names of the Zoho CRM modules: leadMap and meetingMap. Also, include logic for obtaining the total number of appointments and total amount of paid appointments per user in the Leads module. Associate the Meeting record data with the Lead record data via email, so that when you navigate to the Lead record of sample@email.com, the associated meetings will be visible in the Lead module.
+
+//void InvokeURL(String id,String email)
+// Fetch appointment details by appointment_id
+response = invokeurl
+[
+	url :"https://acuityscheduling.com/api/v1/appointments/" + id
+	type :GET
+	connection:"acuityscheduling"
+];
+info response;
+if(response != null)
+{
+	firstName = response.get("firstName");
+	lastName = response.get("lastName");
+	phone = response.get("phone");
+	email = response.get("email");
+	appointmentId = response.get("id");
+	datetime = response.get("datetime");
+	confirmationPage = response.get("confirmationPage");
+	timezone = response.get("timezone");
+	type = response.get("type");
+	amountPaid = response.get("amountPaid");
+	priceSold = response.get("priceSold");
+	certificate = response.get("certificate");
+	// Create Event_Title
+	eventTitle = firstName + " " + lastName + " " + "-" + " " + type;
+	// Fetch all appointments for the given email
+	appointmentsResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments"
+		type :GET
+		parameters:{"email":email}
+		connection:"acuityscheduling"
+	];
+	// Initialize counters
+	appointmentCount = 0;
+	totalAmountPaid = 0.0;
+	for each  appointment in appointmentsResponse
+	{
+		appointmentCount = appointmentCount + 1;
+		totalAmountPaid = totalAmountPaid + toDecimal(appointment.get("amountPaid")) * 1.00;
+		// Multiplying by 1.0 to ensure it is treated as a float
+	}
+	// Convert datetime to Zoho datetime and calculate end time
+	formattedStartDateTime = datetime.toString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+	formattedEndDateTime = datetime.toString("yyyy-MM-dd'T'HH:mm:ss'Z'",1);
+	//add a constant 1 hour to the meeting start time
+	// Map data to Zoho Leads
+	leadMap = Map();
+	leadMap.put("First_Name",firstName);
+	leadMap.put("Last_Name",lastName);
+	leadMap.put("Phone",phone);
+	leadMap.put("Email",email);
+	leadMap.put("Total_Amount_of_Appointment",totalAmountPaid);
+	leadMap.put("Total_Count_of_Appointment",appointmentCount);
+	leadResponse = zoho.crm.createRecord("Leads",leadMap);
+	info leadResponse;
+	// Map data to Zoho Meetings
+	if(leadResponse.get("id") != null)
+	{
+		leadId = leadResponse.get("id");
+		// Map data to Zoho Meetings
+		meetingMap = Map();
+		meetingMap.put("Acuity_Appointment_ID",appointmentId);
+		meetingMap.put("Start_DateTime",formattedStartDateTime);
+		meetingMap.put("End_DateTime",formattedEndDateTime);
+		meetingMap.put("Invitee_Date_Time",formattedStartDateTime);
+		meetingMap.put("Client_Email",email);
+		meetingMap.put("Confirmation_Page_URL",confirmationPage);
+		meetingMap.put("Invitee_Timezone",timezone);
+		meetingMap.put("Coach_Name",type);
+		meetingMap.put("Amount_Paid",amountPaid);
+		meetingMap.put("Price_Sold",priceSold);
+		meetingMap.put("Certificate",certificate);
+		meetingMap.put("Event_Title",eventTitle);
+		meetingMap.put("What_Id",leadId);
+		// Associate the lead ID with the meeting
+		meetingMap.put("$se_module","Leads");
+		// Create Meeting record
+		meetingResponse = zoho.crm.createRecord("Events",meetingMap);
+		info meetingResponse;
+	}
+	else
+	{
+		info "Failed to create Lead.";
+	}
+}
+else
+{
+	info "The API response is null.";
+}
+
+
