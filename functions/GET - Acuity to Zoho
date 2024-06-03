@@ -1,7 +1,19 @@
-// Functions:
-// Retrieve data from Acuity via Webhook, then set a variable to store the appointment data and map it to the API names of the Zoho CRM modules: leadMap and meetingMap. Also, include logic for obtaining the total number of appointments and total amount of paid appointments per user in the Leads module. Associate the Meeting record data with the Lead record data via email, so that when you navigate to the Lead record of sample@email.com, the associated meetings will be visible in the Lead module.
+//void InvokeURL(String crmAPIRequest)
 
-//void InvokeURL(String id,String email)
+// Extract the body string from the request
+body = crmAPIRequest.get("body");
+info body;
+// Extract the "id" parameter from the body string
+idStartIndex = body.indexOf("id=") + 3;
+idEndIndex = body.indexOf("&",idStartIndex);
+if(idEndIndex == -1)
+{
+	id = body.substring(idStartIndex);
+}
+else
+{
+	id = body.substring(idStartIndex,idEndIndex);
+}
 // Fetch appointment details by appointment_id
 response = invokeurl
 [
@@ -9,23 +21,22 @@ response = invokeurl
 	type :GET
 	connection:"acuityscheduling"
 ];
-info response;
-if(response != null)
+//info response;
+if(response != null && response.get("id") != null)
 {
-	firstName = response.get("firstName");
-	lastName = response.get("lastName");
-	phone = response.get("phone");
-	email = response.get("email");
+	firstName = ifnull(response.get("firstName"),"N/A");
+	lastName = ifnull(response.get("lastName"),"N/A");
+	phone = ifnull(response.get("phone"),"N/A");
+	email = ifnull(response.get("email"),"N/A");
 	appointmentId = response.get("id");
 	datetime = response.get("datetime");
-	confirmationPage = response.get("confirmationPage");
-	timezone = response.get("timezone");
-	type = response.get("type");
-	amountPaid = response.get("amountPaid");
-	priceSold = response.get("priceSold");
-	certificate = response.get("certificate");
+	confirmationPage = ifnull(response.get("confirmationPage"),"N/A");
+	timezone = ifnull(response.get("timezone"),"N/A");
+	type = ifnull(response.get("type"),"N/A");
+	amountPaid = ifnull(response.get("amountPaid"),0.0);
+	priceSold = ifnull(response.get("priceSold"),0.0);
+	certificate = ifnull(response.get("certificate"),"N/A");
 	calendarId = response.get("calendarID");
-	// Fetch the calendar ID
 	// Fetch payment details by appointment_id
 	paymentResponse = invokeurl
 	[
@@ -34,15 +45,15 @@ if(response != null)
 		connection:"acuityscheduling"
 	];
 	info paymentResponse;
-    if(paymentResponse != null && paymentResponse.size() > 0) {
-        paymentAmount = paymentResponse.get(0).get("amount");
-        paymentMethod = paymentResponse.get(0).get("processor");
-        paymentID = paymentResponse.get(0).get("transactionID");
-    } else {
-        paymentAmount = 0;
-        paymentMethod = "N/A";
-        paymentID = "N/A";
-    }
+	paymentAmount = 0.0;
+	paymentMethod = "N/A";
+	paymentID = "N/A";
+	if(paymentResponse != null && paymentResponse.size() > 0)
+	{
+		paymentAmount = ifnull(paymentResponse.get(0).get("amount"),0.0);
+		paymentMethod = ifnull(paymentResponse.get(0).get("processor"),"N/A");
+		paymentID = ifnull(paymentResponse.get(0).get("transactionID"),"N/A");
+	}
 	// Fetch calendar details
 	calendarResponse = invokeurl
 	[
@@ -50,7 +61,7 @@ if(response != null)
 		type :GET
 		connection:"acuityscheduling"
 	];
-	info calendarResponse;
+	//info calendarResponse;
 	calendarEmail = "N/A";
 	// Default value if no matching calendar ID is found
 	if(calendarResponse != null)
@@ -59,13 +70,13 @@ if(response != null)
 		{
 			if(calendar.get("id") == calendarId)
 			{
-				calendarEmail = calendar.get("email");
+				calendarEmail = ifnull(calendar.get("email"),"N/A");
 				break;
 			}
 		}
 	}
 	// Create Event_Title
-	eventTitle = firstName + " " + lastName + " " + "-" + " " + type;
+	eventTitle = firstName + " " + lastName + " - " + type;
 	// Fetch all appointments for the given email
 	appointmentsResponse = invokeurl
 	[
@@ -74,13 +85,14 @@ if(response != null)
 		parameters:{"email":email}
 		connection:"acuityscheduling"
 	];
+	//info appointmentsResponse;
 	// Initialize counters
 	appointmentCount = 0;
 	totalAmountPaid = 0.0;
 	for each  appointment in appointmentsResponse
 	{
 		appointmentCount = appointmentCount + 1;
-		totalAmountPaid = totalAmountPaid + toDecimal(appointment.get("amountPaid")) * 1.00;
+		totalAmountPaid = totalAmountPaid + toDecimal(ifnull(appointment.get("amountPaid"),0.0)) * 1.00;
 		// Multiplying by 1.0 to ensure it is treated as a float
 	}
 	// Convert datetime to Zoho datetime and calculate end time
@@ -117,6 +129,12 @@ if(response != null)
 	{
 		// Lead exists, use existing lead ID
 		leadId = leadSearch.get(0).get("id");
+		// Update totalAmountPaid and appointmentCount for existing lead
+		leadMap = Map();
+		leadMap.put("Total_Amount_of_Appointment",totalAmountPaid);
+		leadMap.put("Total_Count_of_Appointment",appointmentCount);
+		updateResponse = zoho.crm.updateRecord("Leads",leadId,leadMap);
+		info updateResponse;
 	}
 	// Map data to Zoho Meetings
 	meetingMap = Map();
@@ -133,8 +151,8 @@ if(response != null)
 	meetingMap.put("Promocode",certificate);
 	meetingMap.put("Event_Title",eventTitle);
 	meetingMap.put("Payment_ID",paymentID);
-    meetingMap.put("Payment_Amount",paymentAmount);
-    meetingMap.put("Payment_Method",paymentMethod);
+	meetingMap.put("Payment_Amount",paymentAmount);
+	meetingMap.put("Payment_Method",paymentMethod);
 	meetingMap.put("Coach_Email",calendarEmail);
 	// Add calendar email to the map
 	meetingMap.put("What_Id",leadId);
