@@ -29,14 +29,17 @@ if(response != null && response.get("id") != null)
 	phone = ifnull(response.get("phone"),"N/A");
 	email = ifnull(response.get("email"),"N/A");
 	appointmentId = response.get("id");
-	datetime = response.get("datetime");
+	datetimeStr = response.get("datetime");
 	confirmationPage = ifnull(response.get("confirmationPage"),"N/A");
-	timezone = ifnull(response.get("timezone"),"N/A");
+	//timezone = ifnull(response.get("timezone"),"N/A");
+	clientTimezone = response.get("timezone");
+	calendarTimezone = response.get("calendarTimezone");
 	type = ifnull(response.get("type"),"N/A");
 	amountPaid = ifnull(response.get("amountPaid"),0.0);
 	priceSold = ifnull(response.get("priceSold"),0.0);
 	certificate = ifnull(response.get("certificate"),"N/A");
 	calendarId = response.get("calendarID");
+	duration = response.get("duration").toNumber();
 	// Fetch payment details by appointment_id
 	paymentResponse = invokeurl
 	[
@@ -95,10 +98,22 @@ if(response != null && response.get("id") != null)
 		totalAmountPaid = totalAmountPaid + toDecimal(ifnull(appointment.get("amountPaid"),0.0)) * 1.00;
 		// Multiplying by 1.0 to ensure it is treated as a float
 	}
-	// Convert datetime to Zoho datetime and calculate end time
-	formattedStartDateTime = datetime.toString("yyyy-MM-dd'T'HH:mm:ss'Z'");
-	endDateTime = datetime.addHour(1);
-	formattedEndDateTime = endDateTime.toString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+	info datetimeStr;
+	dateStr = datetimeStr.substring(0,10);
+	// Extract the date part
+	timeStr = datetimeStr.substring(11,19);
+	// Extract the time part
+	info "dateStr " + dateStr;
+	info "timeStr " + timeStr;
+	// Construct datetime object
+	acuityDateTime = toDate(dateStr,"yyyy-MM-dd") + " " + timeStr;
+	info "toDate acuityDateTime " + acuityDateTime;
+	acuityDateTime2 = dateStr + "T" + timeStr;
+	info "concatenate acuityDateTime" + acuityDateTime2;
+	endDateTime = acuityDateTime.addMinutes(duration);
+	info "endDateTime " + endDateTime;
+	formattedStartDateTime = acuityDateTime2;
+	formattedEndDateTime = endDateTime.toString("yyyy-MM-dd'T'HH:mm:ss");
 	// Map data to Zoho Leads
 	// Check if lead with the same email already exists
 	searchCriteria = "(Email:equals:" + email + ")";
@@ -140,12 +155,17 @@ if(response != null && response.get("id") != null)
 	meetingMap = Map();
 	meetingMap.put("Acuity_Appointment_ID",appointmentId);
 	meetingMap.put("Start_DateTime",formattedStartDateTime);
+	// in the Acuity admin it follows the timezone of the calendar - coach
 	meetingMap.put("End_DateTime",formattedEndDateTime);
 	meetingMap.put("Invitee_Date_Time",formattedStartDateTime);
+	// to be configured cause I need it to convert into client datetime timezone
 	meetingMap.put("Client_Email",email);
 	meetingMap.put("Confirmation_Page_URL",confirmationPage);
-	meetingMap.put("Invitee_Timezone",timezone);
+	meetingMap.put("Invitee_Timezone",clientTimezone);
 	meetingMap.put("Coach_Name",type);
+	meetingMap.put("Coach_Date_Time",formattedStartDateTime);
+	//meetingMap.put("Coach_Date_Time", formattedCoachDateTime);
+	meetingMap.put("Coach_Timezone",calendarTimezone);
 	meetingMap.put("Amount_Paid",amountPaid);
 	meetingMap.put("Price_Sold",priceSold);
 	meetingMap.put("Promocode",certificate);
@@ -154,6 +174,17 @@ if(response != null && response.get("id") != null)
 	meetingMap.put("Payment_Amount",paymentAmount);
 	meetingMap.put("Payment_Method",paymentMethod);
 	meetingMap.put("Coach_Email",calendarEmail);
+	// Add participants
+	participantsList = list();
+	participant1 = Map();
+	participant1.put("type","email");
+	participant1.put("participant",calendarEmail);
+	participantsList.add(participant1);
+	participant2 = Map();
+	participant2.put("type","email");
+	participant2.put("participant",email);
+	participantsList.add(participant2);
+	meetingMap.put("Participants",participantsList);
 	// Add calendar email to the map
 	meetingMap.put("What_Id",leadId);
 	// Associate the lead ID with the meeting
@@ -166,6 +197,3 @@ else
 {
 	info "The API response is null.";
 }
-
-
-
