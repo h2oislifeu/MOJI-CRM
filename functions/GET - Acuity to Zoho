@@ -1,5 +1,5 @@
+//Acuity InvokeURl - fetch dynamic data
 //void InvokeURL(String crmAPIRequest)
-
 // Extract the body string from the request
 body = crmAPIRequest.get("body");
 info body;
@@ -98,22 +98,67 @@ if(response != null && response.get("id") != null)
 		totalAmountPaid = totalAmountPaid + toDecimal(ifnull(appointment.get("amountPaid"),0.0)) * 1.00;
 		// Multiplying by 1.0 to ensure it is treated as a float
 	}
-	info datetimeStr;
-	dateStr = datetimeStr.substring(0,10);
-	// Extract the date part
-	timeStr = datetimeStr.substring(11,19);
-	// Extract the time part
-	info "dateStr " + dateStr;
-	info "timeStr " + timeStr;
-	// Construct datetime object
-	acuityDateTime = toDate(dateStr,"yyyy-MM-dd") + " " + timeStr;
-	info "toDate acuityDateTime " + acuityDateTime;
-	acuityDateTime2 = dateStr + "T" + timeStr;
-	info "concatenate acuityDateTime" + acuityDateTime2;
-	endDateTime = acuityDateTime.addMinutes(duration);
-	info "endDateTime " + endDateTime;
-	formattedStartDateTime = acuityDateTime2;
-	formattedEndDateTime = endDateTime.toString("yyyy-MM-dd'T'HH:mm:ss");
+	// EXTRACTED DATA
+	datePart = datetimeStr.substring(0,10);
+	timePart = datetimeStr.substring(11,19);
+	formattedDatetimeStr = datePart + " " + timePart;
+	info "formattedDatetimeStr " + formattedDatetimeStr;
+	// ADMIN DATETIMEZONE
+	info "ADMIN";
+	adminTimezone = invokeurl
+	[
+		url :"https://www.zohoapis.com/crm/v6/users?type=CurrentUser"
+		type :GET
+		connection:"zoho_oauth"
+	];
+	// 	info "adminTimezone " + adminTimezone;
+	adminDetails = adminTimezone.get("users").get(0);
+	// Get the first user object
+	adminCurrentTimezone = adminDetails.get("time_zone");
+	info "Current Admin Timezone: " + adminCurrentTimezone;
+	adminConversionPayload = {"fromTimeZone":calendarTimezone,"dateTime":formattedDatetimeStr,"toTimeZone":adminCurrentTimezone,"dstAmbiguity":""};
+	adminConversion = invokeurl
+	[
+		url :"https://timeapi.io/api/Conversion/ConvertTimeZone"
+		type :POST
+		parameters:adminConversionPayload.toString()
+		headers:{"Content-Type":"application/json"}
+	];
+	//info "Zoho Current User API Response: " + adminConversion.toString();
+	adminConversionResult = adminConversion.get("conversionResult");
+	formattedStartDateTime = adminConversionResult.get("dateTime");
+	info "adminDateTime in adminTimezone: " + formattedStartDateTime;
+	admDatePart = formattedStartDateTime.substring(0,10);
+	admTimePart = formattedStartDateTime.substring(11,19);
+	admDateTime = toDate(admDatePart,"yyyy-MM-dd") + " " + admTimePart;
+	info "admDateTime " + admDateTime;
+	formattedEndDateTime = admDateTime.addMinutes(duration).toString("yyyy-MM-dd'T'HH:mm:ss");
+	info "formattedEndDateTime " + formattedEndDateTime;
+	// COACH DATETIMEZONE
+	info "COACH";
+	formattedCoachDateTime = datePart + "T" + timePart;
+	info "formattedCoachDateTime " + formattedCoachDateTime;
+	// CLIENT DATETIMEZONE
+	info "CLIENT";
+	conversionPayload = {"fromTimeZone":calendarTimezone,"dateTime":formattedDatetimeStr,"toTimeZone":clientTimezone,"dstAmbiguity":""};
+	clientConversion = invokeurl
+	[
+		url :"https://timeapi.io/api/Conversion/ConvertTimeZone"
+		type :POST
+		parameters:conversionPayload.toString()
+		headers:{"Content-Type":"application/json"}
+	];
+	//    info " Client conversion API Response: " + conversion.toString();
+	// Extracting the converted date-time from the response
+	clientConversionResult = clientConversion.get("conversionResult");
+	formattedUserDateTime = clientConversionResult.get("dateTime");
+	info "clientDateTime in clientTimezone: " + formattedUserDateTime;
+	userDatePart = formattedStartDateTime.substring(0,10);
+	userTimePart = formattedStartDateTime.substring(11,19);
+	userDateTime = toDate(userDatePart,"yyyy-MM-dd") + " " + userTimePart;
+	info "userDateTime " + userDateTime;
+	formattedUserEndDateTime = userDateTime.addMinutes(duration).toString("yyyy-MM-dd'T'HH:mm:ss");
+	info "formattedUserEndDateTime: " + formattedUserEndDateTime;
 	// Map data to Zoho Leads
 	// Check if lead with the same email already exists
 	searchCriteria = "(Email:equals:" + email + ")";
@@ -155,16 +200,13 @@ if(response != null && response.get("id") != null)
 	meetingMap = Map();
 	meetingMap.put("Acuity_Appointment_ID",appointmentId);
 	meetingMap.put("Start_DateTime",formattedStartDateTime);
-	// in the Acuity admin it follows the timezone of the calendar - coach
 	meetingMap.put("End_DateTime",formattedEndDateTime);
-	meetingMap.put("Invitee_Date_Time",formattedStartDateTime);
-	// to be configured cause I need it to convert into client datetime timezone
+	meetingMap.put("Invitee_Date_Time",formattedUserDateTime);
+	meetingMap.put("Invitee_Timezone",clientTimezone);
 	meetingMap.put("Client_Email",email);
 	meetingMap.put("Confirmation_Page_URL",confirmationPage);
-	meetingMap.put("Invitee_Timezone",clientTimezone);
 	meetingMap.put("Coach_Name",type);
-	meetingMap.put("Coach_Date_Time",formattedStartDateTime);
-	//meetingMap.put("Coach_Date_Time", formattedCoachDateTime);
+	meetingMap.put("Coach_Date_Time",formattedCoachDateTime);
 	meetingMap.put("Coach_Timezone",calendarTimezone);
 	meetingMap.put("Amount_Paid",amountPaid);
 	meetingMap.put("Price_Sold",priceSold);
