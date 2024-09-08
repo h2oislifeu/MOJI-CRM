@@ -1,0 +1,45 @@
+//voidPUTZohoToAcuity(Int event_id)
+
+// Custom function to send data from Zoho CRM to Acuity Scheduling
+response = zoho.crm.getRecordById("Events",event_id);
+// Fetch the updated event details
+info response;
+if(response != null)
+{
+	acuityAppointmentId = response.get("Acuity_Appointment_ID");
+	if(acuityAppointmentId != null)
+	{
+		updateMap = Map();
+		// Get the Start_DateTime and format it to ISO 8601 format
+		startDateTime = response.get("Start_DateTime");
+		formattedDateTime = startDateTime.toString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+		updateMap.put("datetime",formattedDateTime);
+		updateMap.put("timezone",response.get("Invitee_Timezone"));
+		// Log the updateMap to check the data being sent
+		info "Update Map: " + updateMap;
+		// Manually construct the JSON string
+		jsonUpdateMap = "{";
+		jsonUpdateMap = jsonUpdateMap + "\"datetime\":\"" + formattedDateTime + "\",";
+		jsonUpdateMap = jsonUpdateMap + "\"timezone\":\"" + response.get("Invitee_Timezone") + "\"";
+		jsonUpdateMap = jsonUpdateMap + "}";
+		info "JSON Update Map: " + jsonUpdateMap;
+		// Update the appointment in Acuity Scheduling using the reschedule endpoint
+		acuityResponse = invokeurl
+		[
+			url :"https://acuityscheduling.com/api/v1/appointments/" + acuityAppointmentId + "/reschedule?admin=true"
+			type :PUT
+			parameters:jsonUpdateMap
+			headers:{"Content-Type":"application/json"}
+			connection:"acuityscheduling"
+		];
+		info "Acuity Response: " + acuityResponse;
+	}
+	else
+	{
+		info "Acuity Appointment ID is not available.";
+	}
+}
+else
+{
+	info "No event data found.";
+}
