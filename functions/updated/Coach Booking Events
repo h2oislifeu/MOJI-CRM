@@ -1,0 +1,125 @@
+//StringCoachBookingEvents(Int coach_id)
+
+// Step 1: Fetch the coach record using the coach_id
+coach_record = zoho.crm.getRecordById("Coaches",coach_id);
+if(coach_record != null)
+{
+	// Retrieve the coach email and calendar ID from the coach record
+	coach_email = coach_record.get("Email");
+	calendarID = coach_record.get("Calendar_ID");
+	info "coach_email " + coach_email;
+	info "calendarID " + calendarID;
+	// Step 2: Fetch all events that have the same coach email
+	events_search_criteria = "(Coach_Email:equals:" + coach_email + ")";
+	associated_events = zoho.crm.searchRecords("Events",events_search_criteria);
+	event_map = Map();
+	if(associated_events.size() > 0)
+	{
+		for each  event in associated_events
+		{
+			appointment_id = event.get("Acuity_Appointment_ID");
+			event_map.put(appointment_id,event);
+		}
+	}
+	// Step 3: Invoke Acuity Scheduling API to fetch regular appointments
+	response = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments"
+		type :GET
+		parameters:{"calendarID":calendarID}
+		connection:"acuityscheduling"
+	];
+	// Step 4: Check the response status and process regular appointments
+	if(response != null)
+	{
+		appointments = response;
+		if(appointments != null && appointments.size() > 0)
+		{
+			currentDate = zoho.currentdate.toDate();
+			xmlContent = "<CoachBookingAppointments>";
+			rowIndex = 0;
+			for each  appointment in appointments
+			{
+				try 
+				{
+					appointmentDate = appointment.get("datetime").toDate();
+				}
+				catch (e)
+				{
+					info "Error parsing date: " + e;
+					continue;
+				}
+				appointmentID = appointment.get("id");
+				appointmentDateOnly = appointment.get("date");
+				appointmentTime = appointment.get("time");
+				appointmentEndTime = appointment.get("endTime");
+				firstName = appointment.get("firstName");
+				lastName = appointment.get("lastName");
+				type = appointment.get("type");
+				promocode = appointment.get("certificate");
+				amountPaid = appointment.get("amountPaid");
+				if(appointmentDate > currentDate)
+				{
+					status = "Upcoming Appointment";
+				}
+				else if(appointmentDate.equals(currentDate))
+				{
+					status = "Active Appointment";
+				}
+				else
+				{
+					status = "Past Appointment";
+				}
+				appointmentDateTimeInfo = appointmentDateOnly + " " + appointmentTime + " - " + appointmentEndTime;
+				xmlContent = xmlContent + "<row no=\"" + rowIndex + "\">";
+				// Search for the appointment ID in the Events module
+				event_search_criteria = "(Acuity_Appointment_ID:equals:" + appointmentID + ")";
+				event_records = zoho.crm.searchRecords("Events",event_search_criteria);
+				if(event_records.size() > 0)
+				{
+					event = event_records.get(0);
+					event_id = event.get("id");
+					event_url = "https://crm.zoho.com/crm/org853337712/tab/Events/" + event_id;
+					xmlContent = xmlContent + "<FL val=\"Appointment ID\" link=\"true\" url=\"" + event_url + "\">" + appointmentID + "</FL>";
+					info "Link added for Appointment ID: " + appointmentID;
+				}
+				else
+				{
+					xmlContent = xmlContent + "<FL val=\"Appointment ID\">" + appointmentID + "</FL>";
+					info "No link for Appointment ID: " + appointmentID;
+				}
+				xmlContent = xmlContent + "<FL val=\"Full Name\">" + firstName + " " + lastName + "</FL>";
+				xmlContent = xmlContent + "<FL val=\"Coach\">" + type + "</FL>";
+				xmlContent = xmlContent + "<FL val=\"Status\">" + status + "</FL>";
+				xmlContent = xmlContent + "<FL val=\"DateTime\">" + appointmentDateTimeInfo + "</FL>";
+				xmlContent = xmlContent + "<FL val=\"Amount Paid\">" + amountPaid + "</FL>";
+				xmlContent = xmlContent + "<FL val=\"Promocode\">" + promocode + "</FL>";
+				xmlContent = xmlContent + "</row>";
+				rowIndex = rowIndex + 1;
+			}
+			xmlContent = xmlContent + "</CoachBookingAppointments>";
+			info xmlContent;
+		}
+		else
+		{
+			xmlContent = "<CoachBookingAppointments><row no=\"0\"><FL val=\"Error\">No appointments found for the provided calendar ID.</FL></row></CoachBookingAppointments>";
+		}
+	}
+	else
+	{
+		xmlContent = "<CoachBookingAppointments><row no=\"0\"><FL val=\"Error\">Failed to fetch appointments.</FL></row></CoachBookingAppointments>";
+	}
+	// Optionally, you can update a field in the Coach record with the generated XML output
+	update_map = Map();
+	update_map.put("Event_Details",xmlContent);
+	// Assuming Event_Details is a custom field to hold the table
+	update_response = zoho.crm.updateRecord("Coaches",coach_id,update_map);
+	// info "update_response " + update_response;
+	return xmlContent;
+}
+else
+{
+	xmlContent = "<CoachBookingAppointments><row no=\"0\"><FL val=\"Error\">Coach record not found.</FL></row></CoachBookingAppointments>";
+	// info xmlContent;
+	return xmlContent;
+}
