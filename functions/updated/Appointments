@@ -1,0 +1,85 @@
+//StringAppointmentLists(Int id)
+
+// Step 1: Fetch the email from the Lead record
+leadRecord = zoho.crm.getRecordById("Leads",id);
+email = leadRecord.get("Email");
+info email;
+// Check if email is empty
+if(email == null || email.isEmpty())
+{
+	return "Email not found in the Lead record.";
+}
+// Step 2: Invoke Acuity Scheduling API to fetch regular appointments
+response = invokeurl
+[
+	url :"https://acuityscheduling.com/api/v1/appointments"
+	type :GET
+	parameters:{"email":email}
+	connection:"acuityscheduling"
+];
+// Step 3: Check the response status and process regular appointments
+if(response != null)
+{
+	appointments = response;
+	if(appointments != null && appointments.size() > 0)
+	{
+		currentDate = zoho.currentdate.toDate();
+		xmlContent = "<regularAppointments>";
+		rowIndex = 0;
+		for each  appointment in appointments
+		{
+			try 
+			{
+				appointmentDate = appointment.get("datetime").toDate();
+			}
+			catch (e)
+			{
+				info "Error parsing date: " + e;
+				continue;
+			}
+			appointmentID = appointment.get("id");
+			appointmentDateOnly = appointment.get("date");
+			appointmentTime = appointment.get("time");
+			appointmentEndTime = appointment.get("endTime");
+			firstName = appointment.get("firstName");
+			lastName = appointment.get("lastName");
+			type = appointment.get("type");
+			promocode = appointment.get("certificate");
+			amountPaid = appointment.get("amountPaid");
+			if(appointmentDate > currentDate)
+			{
+				status = "Upcoming Appointment";
+			}
+			else if(appointmentDate.equals(currentDate))
+			{
+				status = "Active Appointment";
+			}
+			else
+			{
+				status = "Past Appointment";
+			}
+			appointmentDateTimeInfo = appointmentDateOnly + " " + appointmentTime + " - " + appointmentEndTime;
+			xmlContent = xmlContent + "<row no=\"" + rowIndex + "\">";
+			xmlContent = xmlContent + "<FL val=\"Appointment ID\">" + appointmentID + "</FL>";
+			xmlContent = xmlContent + "<FL val=\"Full Name\">" + firstName + " " + lastName + "</FL>";
+			xmlContent = xmlContent + "<FL val=\"Coach\">" + type + "</FL>";
+			xmlContent = xmlContent + "<FL val=\"Status\">" + status + "</FL>";
+			xmlContent = xmlContent + "<FL val=\"DateTime\">" + appointmentDateTimeInfo + "</FL>";
+			xmlContent = xmlContent + "<FL val=\"Amount Paid\">" + amountPaid + "</FL>";
+			xmlContent = xmlContent + "<FL val=\"Promocode\">" + promocode + "</FL>";
+			xmlContent = xmlContent + "</row>";
+			rowIndex = rowIndex + 1;
+		}
+		xmlContent = xmlContent + "</regularAppointments>";
+		info xmlContent;
+	}
+	else
+	{
+		xmlContent = "<regularAppointments><row no=\"0\"><FL val=\"Error\">No appointments found for the provided email.</FL></row></regularAppointments>";
+	}
+}
+else
+{
+	return "<regularAppointments><row no=\"0\"><FL val=\"Error\">Failed to fetch appointments.</FL></row></regularAppointments>";
+}
+return "<result>" + xmlContent + "</result>";
