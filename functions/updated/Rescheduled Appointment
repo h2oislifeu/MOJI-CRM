@@ -1,0 +1,270 @@
+//voidapptRescheduled(String crmAPIRequest)
+
+// Extract the body string from the request
+body = crmAPIRequest.get("body");
+info body;
+// Extract the "id" parameter from the body string
+idStartIndex = body.indexOf("id=") + 3;
+idEndIndex = body.indexOf("&",idStartIndex);
+if(idEndIndex == -1)
+{
+	id = body.substring(idStartIndex);
+}
+else
+{
+	id = body.substring(idStartIndex,idEndIndex);
+}
+// Fetch appointment details by appointment_id
+response = invokeurl
+[
+	url :"https://acuityscheduling.com/api/v1/appointments/" + id
+	type :GET
+	connection:"acuityscheduling"
+];
+if(response != null && response.get("id") != null)
+{
+	firstName = ifnull(response.get("firstName"),"N/A");
+	lastName = ifnull(response.get("lastName"),"N/A");
+	phone = ifnull(response.get("phone"),"N/A");
+	email = ifnull(response.get("email"),"N/A");
+	appointmentId = response.get("id");
+	datetimeStr = response.get("datetime");
+	confirmationPage = ifnull(response.get("confirmationPage"),"N/A");
+	clientTimezone = response.get("timezone");
+	calendarTimezone = response.get("calendarTimezone");
+	type = ifnull(response.get("type"),"N/A");
+	amountPaid = ifnull(response.get("amountPaid"),0.0);
+	priceSold = ifnull(response.get("priceSold"),0.0);
+	certificate = ifnull(response.get("certificate"),"N/A");
+	calendarId = response.get("calendarID");
+	duration = response.get("duration").toNumber();
+	// Fetch payment details by appointment_id
+	paymentResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments/" + id + "/payments"
+		type :GET
+		connection:"acuityscheduling"
+	];
+	paymentAmount = 0.0;
+	paymentMethod = "N/A";
+	paymentID = "N/A";
+	if(paymentResponse != null && paymentResponse.size() > 0)
+	{
+		paymentAmount = ifnull(paymentResponse.get(0).get("amount"),0.0);
+		paymentMethod = ifnull(paymentResponse.get(0).get("processor"),"N/A");
+		paymentID = ifnull(paymentResponse.get(0).get("transactionID"),"N/A");
+	}
+	// Fetch calendar details
+	calendarResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/calendars"
+		type :GET
+		connection:"acuityscheduling"
+	];
+	calendarEmail = "N/A";
+	if(calendarResponse != null)
+	{
+		for each  calendar in calendarResponse
+		{
+			if(calendar.get("id") == calendarId)
+			{
+				calendarEmail = ifnull(calendar.get("email"),"N/A");
+				break;
+			}
+		}
+	}
+	// Create Event_Title
+	eventTitle = firstName + " " + lastName + " - " + type;
+	// Fetch all appointments for the given email
+	appointmentsResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments"
+		type :GET
+		parameters:{"email":email}
+		connection:"acuityscheduling"
+	];
+	// Initialize counters
+	appointmentCount = 0;
+	totalAmountPaid = 0.0;
+	for each  appointment in appointmentsResponse
+	{
+		appointmentCount = appointmentCount + 1;
+		totalAmountPaid = totalAmountPaid + toDecimal(ifnull(appointment.get("amountPaid"),0.0)) * 1.00;
+	}
+	// EXTRACTED DATA
+	datePart = datetimeStr.substring(0,10);
+	timePart = datetimeStr.substring(11,19);
+	formattedDatetimeStr = datePart + " " + timePart;
+	info "formattedDatetimeStr " + formattedDatetimeStr;
+	// ADMIN DATETIMEZONE
+	info "ADMIN";
+	adminTimezone = invokeurl
+	[
+		url :"https://www.zohoapis.com/crm/v6/users?type=CurrentUser"
+		type :GET
+		connection:"zoho_oauth"
+	];
+	// 	info "adminTimezone " + adminTimezone;
+	adminDetails = adminTimezone.get("users").get(0);
+	// Get the first user object
+	adminCurrentTimezone = adminDetails.get("time_zone");
+	info "Current Admin Timezone: " + adminCurrentTimezone;
+	adminConversionPayload = {"fromTimeZone":calendarTimezone,"dateTime":formattedDatetimeStr,"toTimeZone":adminCurrentTimezone,"dstAmbiguity":""};
+	adminConversion = invokeurl
+	[
+		url :"https://timeapi.io/api/Conversion/ConvertTimeZone"
+		type :POST
+		parameters:adminConversionPayload.toString()
+		headers:{"Content-Type":"application/json"}
+	];
+	//info "Zoho Current User API Response: " + adminConversion.toString();
+	adminConversionResult = adminConversion.get("conversionResult");
+	formattedStartDateTime = adminConversionResult.get("dateTime");
+	info "adminDateTime in adminTimezone: " + formattedStartDateTime;
+	admDatePart = formattedStartDateTime.substring(0,10);
+	admTimePart = formattedStartDateTime.substring(11,19);
+	admDateTime = toDate(admDatePart,"yyyy-MM-dd") + " " + admTimePart;
+	info "admDateTime " + admDateTime;
+	formattedEndDateTime = admDateTime.addMinutes(duration).toString("yyyy-MM-dd'T'HH:mm:ss");
+	info "formattedEndDateTime " + formattedEndDateTime;
+	// COACH DATETIMEZONE
+	info "COACH";
+	formattedCoachDateTime = datePart + "T" + timePart;
+	info "formattedCoachDateTime " + formattedCoachDateTime;
+	// CLIENT DATETIMEZONE
+	info "CLIENT";
+	conversionPayload = {"fromTimeZone":calendarTimezone,"dateTime":formattedDatetimeStr,"toTimeZone":clientTimezone,"dstAmbiguity":""};
+	clientConversion = invokeurl
+	[
+		url :"https://timeapi.io/api/Conversion/ConvertTimeZone"
+		type :POST
+		parameters:conversionPayload.toString()
+		headers:{"Content-Type":"application/json"}
+	];
+	//    info " Client conversion API Response: " + conversion.toString();
+	// Extracting the converted date-time from the response
+	clientConversionResult = clientConversion.get("conversionResult");
+	formattedUserDateTime = clientConversionResult.get("dateTime");
+	info "clientDateTime in clientTimezone: " + formattedUserDateTime;
+	userDatePart = formattedStartDateTime.substring(0,10);
+	userTimePart = formattedStartDateTime.substring(11,19);
+	userDateTime = toDate(userDatePart,"yyyy-MM-dd") + " " + userTimePart;
+	info "userDateTime " + userDateTime;
+	formattedUserEndDateTime = userDateTime.addMinutes(duration).toString("yyyy-MM-dd'T'HH:mm:ss");
+	info "formattedUserEndDateTime: " + formattedUserEndDateTime;
+	// Map data to Zoho Leads
+	// Check if lead with the same email already exists
+	searchCriteria = "(Email:equals:" + email + ")";
+	leadSearch = zoho.crm.searchRecords("Leads",searchCriteria);
+	if(leadSearch.isEmpty())
+	{
+		// Lead does not exist, create a new lead
+		leadMap = Map();
+		leadMap.put("First_Name",firstName);
+		leadMap.put("Last_Name",lastName);
+		leadMap.put("Phone",phone);
+		leadMap.put("Email",email);
+		leadMap.put("Total_Amount_of_Appointment",totalAmountPaid);
+		leadMap.put("Total_Count_of_Appointment",appointmentCount);
+		leadResponse = zoho.crm.createRecord("Leads",leadMap);
+		if(leadResponse.get("id") != null)
+		{
+			leadId = leadResponse.get("id");
+		}
+		else
+		{
+			info "Failed to create Lead.";
+			return;
+		}
+	}
+	else
+	{
+		// Lead exists, use existing lead ID
+		leadId = leadSearch.get(0).get("id");
+		// Update totalAmountPaid and appointmentCount for existing lead
+		leadMap = Map();
+		leadMap.put("Total_Amount_of_Appointment",totalAmountPaid);
+		leadMap.put("Total_Count_of_Appointment",appointmentCount);
+		updateResponse = zoho.crm.updateRecord("Leads",leadId,leadMap);
+	}
+	// Check if the meeting already exists
+	meetingSearch = zoho.crm.searchRecords("Events","(Acuity_Appointment_ID:equals:" + appointmentId + ")");
+	if(!meetingSearch.isEmpty())
+	{
+		meetingId = meetingSearch.get(0).get("id");
+		// Update the existing meeting record
+		meetingMap = Map();
+		meetingMap.put("Start_DateTime",formattedStartDateTime);
+		meetingMap.put("End_DateTime",formattedEndDateTime);
+		meetingMap.put("Invitee_Date_Time",formattedUserDateTime);
+		meetingMap.put("Client_Email",email);
+		meetingMap.put("Confirmation_Page_URL",confirmationPage);
+		meetingMap.put("Invitee_Timezone",clientTimezone);
+		meetingMap.put("Coach_Name",type);
+		meetingMap.put("Coach_Date_Time",formattedCoachDateTime);
+		meetingMap.put("Coach_Timezone",calendarTimezone);
+		meetingMap.put("Amount_Paid",amountPaid);
+		meetingMap.put("Price_Sold",priceSold);
+		meetingMap.put("Promocode",certificate);
+		meetingMap.put("Event_Title",eventTitle);
+		meetingMap.put("Payment_ID",paymentID);
+		meetingMap.put("Payment_Amount",paymentAmount);
+		meetingMap.put("Payment_Method",paymentMethod);
+		meetingMap.put("Coach_Email",calendarEmail);
+		participantsList = list();
+		participant1 = Map();
+		participant1.put("type","email");
+		participant1.put("participant",calendarEmail);
+		participantsList.add(participant1);
+		participant2 = Map();
+		participant2.put("type","email");
+		participant2.put("participant",email);
+		participantsList.add(participant2);
+		meetingMap.put("Participants",participantsList);
+		meetingMap.put("What_Id",leadId);
+		meetingMap.put("$se_module","Leads");
+		updateMeetingResponse = zoho.crm.updateRecord("Events",meetingId,meetingMap);
+		info updateMeetingResponse;
+	}
+	else
+	{
+		// Create new Meeting record
+		meetingMap = Map();
+		meetingMap.put("Acuity_Appointment_ID",appointmentId);
+		meetingMap.put("Start_DateTime",formattedStartDateTime);
+		meetingMap.put("End_DateTime",formattedEndDateTime);
+		meetingMap.put("Invitee_Date_Time",formattedUserDateTime);
+		meetingMap.put("Client_Email",email);
+		meetingMap.put("Confirmation_Page_URL",confirmationPage);
+		meetingMap.put("Invitee_Timezone",clientTimezone);
+		meetingMap.put("Coach_Name",type);
+		meetingMap.put("Coach_Date_Time",formattedCoachDateTime);
+		meetingMap.put("Coach_Timezone",calendarTimezone);
+		meetingMap.put("Amount_Paid",amountPaid);
+		meetingMap.put("Price_Sold",priceSold);
+		meetingMap.put("Promocode",certificate);
+		meetingMap.put("Event_Title",eventTitle);
+		meetingMap.put("Payment_ID",paymentID);
+		meetingMap.put("Payment_Amount",paymentAmount);
+		meetingMap.put("Payment_Method",paymentMethod);
+		meetingMap.put("Coach_Email",calendarEmail);
+		participantsList = list();
+		participant1 = Map();
+		participant1.put("type","email");
+		participant1.put("participant",calendarEmail);
+		participantsList.add(participant1);
+		participant2 = Map();
+		participant2.put("type","email");
+		participant2.put("participant",email);
+		participantsList.add(participant2);
+		meetingMap.put("Participants",participantsList);
+		meetingMap.put("What_Id",leadId);
+		meetingMap.put("$se_module","Leads");
+		meetingResponse = zoho.crm.createRecord("Events",meetingMap);
+		info meetingResponse;
+	}
+}
+else
+{
+	info "The API response is null.";
+}
