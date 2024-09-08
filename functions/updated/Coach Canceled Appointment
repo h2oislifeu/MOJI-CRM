@@ -1,3 +1,5 @@
+//StringCoachCanceledAppt(Int id)
+
 // Step 1: Fetch the email from the Lead record
 coachRecord = zoho.crm.getRecordById("Coaches",id);
 calendarID = coachRecord.get("Calendar_ID");
