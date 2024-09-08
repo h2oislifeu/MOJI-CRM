@@ -1,0 +1,831 @@
+// voidInvokeURL(String crmAPIRequest)
+
+// Extract the body string from the request
+body = crmAPIRequest.get("body");
+//info body;
+// Extract the "id" parameter from the body string
+idStartIndex = body.indexOf("id=") + 3;
+idEndIndex = body.indexOf("&",idStartIndex);
+if(idEndIndex == -1)
+{
+	id = body.substring(idStartIndex);
+}
+else
+{
+	id = body.substring(idStartIndex,idEndIndex);
+}
+// Fetch appointment details by appointment_id
+response = invokeurl
+[
+	url :"https://acuityscheduling.com/api/v1/appointments/" + id
+	type :GET
+	connection:"acuityscheduling"
+];
+//info response;
+if(response != null && response.get("id") != null)
+{
+	firstName = ifnull(response.get("firstName"),"N/A");
+	lastName = ifnull(response.get("lastName"),"N/A");
+	phone = ifnull(response.get("phone"),"N/A");
+	email = ifnull(response.get("email"),"N/A");
+	appointmentId = response.get("id");
+	datetimeStr = response.get("datetime");
+	confirmationPage = ifnull(response.get("confirmationPage"),"N/A");
+	//timezone = ifnull(response.get("timezone"),"N/A");
+	clientTimezone = response.get("timezone");
+	calendarTimezone = response.get("calendarTimezone");
+	type = ifnull(response.get("type"),"N/A");
+	amountPaid = ifnull(response.get("amountPaid"),0.0);
+	priceSold = ifnull(response.get("priceSold"),0.0);
+	certificate = ifnull(response.get("certificate"),"N/A");
+	appointmentTypeID = response.get("appointmentTypeID");
+	calendarID = response.get("calendarID");
+	calendarId = response.get("calendarID");
+	duration = response.get("duration").toNumber();
+	// Fetch payment details by appointment_id
+	paymentResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments/" + id + "/payments"
+		type :GET
+		connection:"acuityscheduling"
+	];
+	//info paymentResponse;
+	paymentAmount = 0.0;
+	paymentMethod = "N/A";
+	paymentID = "N/A";
+	if(paymentResponse != null && paymentResponse.size() > 0)
+	{
+		paymentAmount = ifnull(paymentResponse.get(0).get("amount"),0.0);
+		paymentMethod = ifnull(paymentResponse.get(0).get("processor"),"N/A");
+		paymentID = ifnull(paymentResponse.get(0).get("transactionID"),"N/A");
+	}
+	// Fetch calendar details
+	calendarResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/calendars"
+		type :GET
+		connection:"acuityscheduling"
+	];
+	//info calendarResponse;
+	calendarEmail = "N/A";
+	// Default value if no matching calendar ID is found
+	if(calendarResponse != null)
+	{
+		for each  calendar in calendarResponse
+		{
+			if(calendar.get("id") == calendarId)
+			{
+				calendarEmail = ifnull(calendar.get("email"),"N/A");
+				break;
+			}
+		}
+	}
+	// Create Event_Title
+	eventTitle = firstName + " " + lastName + " - " + type;
+	// Fetch all appointments for the given email
+	appointmentsResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments"
+		type :GET
+		parameters:{"email":email}
+		connection:"acuityscheduling"
+	];
+	//info appointmentsResponse;
+	// Initialize counters
+	appointmentCount = 0;
+	totalAmountPaid = 0.0;
+	for each  appointment in appointmentsResponse
+	{
+		appointmentCount = appointmentCount + 1;
+		totalAmountPaid = totalAmountPaid + toDecimal(ifnull(appointment.get("amountPaid"),0.0)) * 1.00;
+		// Multiplying by 1.0 to ensure it is treated as a float
+	}
+	//
+	// EXTRACTED DATA
+	datePart = datetimeStr.substring(0,10);
+	timePart = datetimeStr.substring(11,19);
+	timezonePart = datetimeStr.substring(19);
+	// Combine the date and time parts
+	formattedDatetimeStr = datePart + " " + timePart;
+	info "formattedDatetimeStr " + formattedDatetimeStr;
+	datetimeObj = toString(formattedDatetimeStr);
+	info "datetimeObj: " + datetimeObj;
+	// ADMIN DATETIMEZONE
+	info "ADMIN";
+	adminTimezoneResponse = invokeurl
+	[
+		url :"https://www.zohoapis.com/crm/v6/users?type=CurrentUser"
+		type :GET
+		connection:"zoho_oauth"
+	];
+	adminDetails = adminTimezoneResponse.get("users").get(0);
+	adminCurrentTimezone = adminDetails.get("time_zone");
+	info "Current Admin Timezone: " + adminCurrentTimezone;
+	// 	info "ADMIN: "  + toDateTimeString(unixctime,"MMM dd, yy 'at' hh:mm:ss z, E",adminCurrentTimezone);
+	adminunix = datetimeObj.unixEpoch(calendarTimezone);
+	info "adminunix: " + adminunix;
+	// Convert datetime to admin timezone
+	formattedStartDateTime = toDateTimeString(adminunix,"yyyy-MM-dd'T'HH:mm:ss",adminCurrentTimezone);
+	info "formattedAdminDatetime " + formattedStartDateTime;
+	admDateTime = toDatetime(formattedStartDateTime);
+	info "admDateTime: " + admDateTime;
+	admDatePart = formattedStartDateTime.substring(0,10);
+	admTimePart = formattedStartDateTime.substring(11,19);
+	admDateTime = toDate(admDatePart,"yyyy-MM-dd") + " " + admTimePart;
+	info "admDateTime: " + admDateTime;
+	formattedEndDateTime = admDateTime.addMinutes(duration).toString("yyyy-MM-dd'T'HH:mm:ss");
+	info "formattedEndDateTime: " + formattedEndDateTime;
+	// COACH DATETIMEZONE
+	info "COACH";
+	formattedCoachDateTime = toDateTimeString(adminunix,"yyyy-MM-dd'T'HH:mm:ss",calendarTimezone);
+	info "formattedCoachDatetime " + formattedCoachDateTime;
+	// CLIENT DATETIMEZONE
+	info "CLIENT";
+	formattedClientDatetime = toDateTimeString(adminunix,"yyyy-MM-dd'T'HH:mm:ss",clientTimezone);
+	info "formattedClientDatetime " + formattedClientDatetime;
+	// Map data to Zoho Leads
+	// Check if lead with the same email already exists
+	searchCriteria = "(Email:equals:" + email + ")";
+	leadSearch = zoho.crm.searchRecords("Leads",searchCriteria);
+	if(leadSearch.isEmpty())
+	{
+		// Lead does not exist, create a new lead
+		leadMap = Map();
+		leadMap.put("First_Name",firstName);
+		leadMap.put("Last_Name",lastName);
+		leadMap.put("Phone",phone);
+		leadMap.put("Email",email);
+		leadMap.put("Total_Amount_of_Appointment",totalAmountPaid);
+		leadMap.put("Total_Count_of_Appointment",appointmentCount);
+		leadResponse = zoho.crm.createRecord("Leads",leadMap);
+		// 		info leadResponse;
+		if(leadResponse.get("id") != null)
+		{
+			leadId = leadResponse.get("id");
+		}
+		else
+		{
+			info "Failed to create Lead.";
+			return;
+		}
+	}
+	else
+	{
+		// Lead exists, use existing lead ID
+		leadId = leadSearch.get(0).get("id");
+		// Update totalAmountPaid and appointmentCount for existing lead
+		leadMap = Map();
+		leadMap.put("Total_Amount_of_Appointment",totalAmountPaid);
+		leadMap.put("Total_Count_of_Appointment",appointmentCount);
+		updateResponse = zoho.crm.updateRecord("Leads",leadId,leadMap);
+		// 		info updateResponse;
+	}
+	// Map data to Zoho Meetings
+	meetingMap = Map();
+	meetingMap.put("Acuity_Appointment_ID",appointmentId);
+	meetingMap.put("Start_DateTime",formattedStartDateTime);
+	meetingMap.put("End_DateTime",formattedEndDateTime);
+	meetingMap.put("Client_Date_Time",formattedClientDatetime);
+	meetingMap.put("Client_Timezone",clientTimezone);
+	meetingMap.put("Client_Email",email);
+	meetingMap.put("Confirmation_Page_URL",confirmationPage);
+	meetingMap.put("Coach_Name",type);
+	meetingMap.put("Coach_Date_Time",formattedCoachDateTime);
+	meetingMap.put("Coach_Timezone",calendarTimezone);
+	meetingMap.put("Amount_Paid",amountPaid);
+	meetingMap.put("Price_Sold",priceSold);
+	meetingMap.put("Promocode",certificate);
+	meetingMap.put("Event_Title",eventTitle);
+	meetingMap.put("Payment_ID",paymentID);
+	meetingMap.put("Payment_Amount",paymentAmount);
+	meetingMap.put("Payment_Method",paymentMethod);
+	// Initialize the list for participants
+	participantsList = list();
+	// Sample input string for calendar emails
+	calendarEmailsInput = calendarEmail;
+	// 	info "calendar emails: " + calendarEmailsInput;
+	// 	info "user email: " + email;
+	delimiter = ",";
+	// Initialize the list to hold email addresses
+	calendarEmails = list();
+	// Extract and process the first email
+	firstDelimiterIndex = calendarEmailsInput.indexOf(delimiter);
+	if(firstDelimiterIndex != -1)
+	{
+		firstEmail = calendarEmailsInput.substring(0,firstDelimiterIndex).trim();
+		calendarEmails.add(firstEmail);
+		// Extract the remaining part for further processing
+		calendarEmailsInput = calendarEmailsInput.substring(firstDelimiterIndex + delimiter.length()).trim();
+	}
+	else
+	{
+		firstEmail = calendarEmailsInput.trim();
+		calendarEmails.add(firstEmail);
+		calendarEmailsInput = "";
+		// Clear the string if no delimiter is found
+	}
+	// Extract and process the second email (if available)
+	if(calendarEmailsInput.length() > 0)
+	{
+		secondEmail = calendarEmailsInput.trim();
+		calendarEmails.add(secondEmail);
+	}
+	// Add participants from calendarEmails list
+	if(calendarEmails.size() > 0)
+	{
+		participant1 = Map();
+		participant1.put("type","email");
+		participant1.put("participant",calendarEmails.get(0));
+		participantsList.add(participant1);
+		// 		info "participant 1: " + participant1;
+	}
+	if(calendarEmails.size() > 1)
+	{
+		participant2 = Map();
+		participant2.put("type","email");
+		participant2.put("participant",calendarEmails.get(1));
+		participantsList.add(participant2);
+		// 		info "participant 2: " + participant2;
+	}
+	// Add participant3 only if it is distinct and needed
+	if(calendarEmails.size() > 1)
+	{
+		// Check to ensure it's not a duplicate
+		if(calendarEmails.get(1) != calendarEmails.get(0))
+		{
+			participant3 = Map();
+			participant3.put("type","email");
+			participant3.put("participant",calendarEmails.get(1));
+			participantsList.add(participant3);
+			// 			info "participant 3: " + participant3;
+		}
+	}
+	// Assuming 'email' is defined elsewhere in your code
+	participantUser = Map();
+	participantUser.put("type","email");
+	participantUser.put("participant",email);
+	participantsList.add(participantUser);
+	// 	info "user participant: " + participantUser;
+	// Assign participants to the meetingMap
+	meetingMap.put("Participants",participantsList);
+	meetingMap.put("Coach_Email",calendarEmails.get(0));
+	meetingMap.put("What_Id",leadId);
+	// Associate the lead ID with the meeting
+	meetingMap.put("$se_module","Leads");
+	// Create Meeting record
+	meetingResponse = zoho.crm.createRecord("Events",meetingMap);
+	// 	info meetingResponse;
+	//
+	/////////////////////////////////////////////////////////////////////////////// INVITATIONS
+	// Check if the meeting was successfully created
+	if(meetingResponse.get("id") != null)
+	{
+		id = meetingResponse.get("id");
+		// Fetch the existing Participants for the created event
+		resp = zoho.crm.getRecordById("Events",id);
+		// Store the original participants before updating
+		originalParticipants = resp.get("Participants");
+		// Update to send notification to only one participant
+		upd = zoho.crm.updateRecord("Events",id,{"Participants":{{"type":"email","participant":"jayanntestacc@gmail.com"}},"$send_notification":true});
+		info upd;
+		// Restore original participants without sending notification
+		restore = zoho.crm.updateRecord("Events",id,{"Participants":originalParticipants,"$send_notification":false});
+		info restore;
+	}
+	// Fetch calendar details by email
+	coachCalendarList = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/calendars"
+		type :GET
+		connection:"acuityscheduling"
+	];
+	// Initialize default values
+	calendarName = "N/A";
+	calendarDescription = "N/A";
+	calendarTimezone = "N/A";
+	// 	calendarId = "N/A";
+	if(coachCalendarList != null && coachCalendarList.size() > 0)
+	{
+		// Filter calendars by email
+		for each  calendar in coachCalendarList
+		{
+			if(calendar.get("id") == calendarId)
+			{
+				calendarDetails = calendar;
+				break;
+			}
+		}
+		if(calendarDetails != null)
+		{
+			// 			calendarId = ifnull(calendarDetails.get("id"),"N/A");
+			calendarName = ifnull(calendarDetails.get("name"),"N/A");
+			calendarDescription = ifnull(calendarDetails.get("description"),"N/A");
+			calendarTimezone = ifnull(calendarDetails.get("timezone"),"N/A");
+		}
+	}
+	// 	info calendarDetails;
+	// 	info calendarTimezone;
+	// 	info calendarName;
+	// 	info "calendarId " + calendarId;
+	//
+	//////////////////
+	// Fetch all appointments for the coach
+	allAppointmentsResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments"
+		type :GET
+		parameters:{"calendarID":calendarId}
+		connection:"acuityscheduling"
+	];
+	// Initialize coach counters
+	coachApptCount = 0;
+	coachApptTotalAmount = 0.0;
+	totalAmountEarn = 0.0;
+	uniqueDates_ = List();
+	// Initialize monthly appointments map
+	weeklyAppointments_ = Map();
+	monthlyAppointments_ = Map();
+	// To store unique dates
+	totalWeeks_ = 0;
+	totalMonths_ = 0;
+	// Check if the response is not null and is a list
+	if(allAppointmentsResponse != null && allAppointmentsResponse.size() > 0)
+	{
+		for each  appointment in allAppointmentsResponse
+		{
+			// Log each appointment details
+			//info "Appointment: " + appointment;
+			// Increment the count
+			coachApptCount = coachApptCount + 1;
+			// Convert amountPaid to decimal and add to the total amount
+			amountPaid = toDecimal(appointment.get("amountPaid")) * 1.00;
+			// Log the amount paid for each appointment
+			// 			info "Amount Paid: " + amountPaid;
+			coachApptTotalAmount = coachApptTotalAmount + amountPaid;
+			totalAmountEarn = totalAmountEarn + toDecimal(appointment.get("priceSold")) * 1.00;
+			apptDate_ = appointment.get("datetime").toDate("yyyy-MM-dd'T'HH:mm:ss");
+			// 			info "apptDate_ " + apptDate_;
+			// Add date to unique dates set
+			apptDateString_ = apptDate_.toString("yyyy-MM-dd");
+			// Add date to unique dates list if not already present
+			if(!uniqueDates_.contains(apptDateString_))
+			{
+				uniqueDates_.add(apptDateString_);
+			}
+			// Calculate week number and month
+			weekNumber_ = apptDate_.getWeekOfYear();
+			// 			info "weekNumber_ " + weekNumber_;
+			monthNumber_ = apptDate_.getMonth();
+			// 			info "monthNumber_ " + monthNumber_;
+			// Update weekly appointments count
+			if(weeklyAppointments_.containsKey(weekNumber_))
+			{
+				weeklyAppointments_.put(weekNumber_,weeklyAppointments_.get(weekNumber_) + 1);
+			}
+			else
+			{
+				weeklyAppointments_.put(weekNumber_,1);
+				totalWeeks_ = totalWeeks_ + 1;
+			}
+			// Update monthly appointments count
+			if(monthlyAppointments_.containsKey(monthNumber_))
+			{
+				monthlyAppointments_.put(monthNumber_,monthlyAppointments_.get(monthNumber_) + 1);
+			}
+			else
+			{
+				monthlyAppointments_.put(monthNumber_,1);
+				totalMonths_ = totalMonths_ + 1;
+			}
+		}
+	}
+	else
+	{
+		// Log if there are no appointments
+		info "No appointments found for the coach.";
+	}
+	// 	// Log the final counters
+	// 	info "Final coachApptCount: " + coachApptCount;
+	// 	info "Final coachApptTotalAmount: " + coachApptTotalAmount;
+	//
+	// Fetch all appointments for the coach
+	showAllAppointmentsResponse = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointments"
+		type :GET
+		parameters:{"calendarID":calendarId,"showall":true}
+		connection:"acuityscheduling"
+	];
+	// Initialize coach counters
+	coachApptCountwCanceled = 0;
+	appointmentDatesMap = Map();
+	weeklyAppointments = Map();
+	monthlyAppointments = Map();
+	uniqueDates = List();
+	// To store unique dates
+	totalWeeks = 0;
+	totalMonths = 0;
+	// Check if the response is not null and is a list
+	if(showAllAppointmentsResponse != null && showAllAppointmentsResponse.size() > 0)
+	{
+		for each  appointment in showAllAppointmentsResponse
+		{
+			coachApptCountwCanceled = coachApptCountwCanceled + 1;
+			///////////////////////////
+			// Group appointments by date
+			appointmentDate = appointment.get("date");
+			if(appointmentDatesMap.containsKey(appointmentDate))
+			{
+				appointmentDatesMap.put(appointmentDate,appointmentDatesMap.get(appointmentDate) + 1);
+			}
+			else
+			{
+				appointmentDatesMap.put(appointmentDate,1);
+			}
+			apptDate = appointment.get("datetime").toDate("yyyy-MM-dd'T'HH:mm:ss");
+			// 			info "apptDate " + apptDate;
+			// Add date to unique dates set
+			apptDateString = apptDate.toString("yyyy-MM-dd");
+			// Add date to unique dates list if not already present
+			if(!uniqueDates.contains(apptDateString))
+			{
+				uniqueDates.add(apptDateString);
+			}
+			// Calculate week number and month
+			weekNumber = apptDate.getWeekOfYear();
+			// 			info "weekNumber " + weekNumber;
+			monthNumber = apptDate.getMonth();
+			// 			info "monthNumber " + monthNumber;
+			// Update weekly appointments count
+			if(weeklyAppointments.containsKey(weekNumber))
+			{
+				weeklyAppointments.put(weekNumber,weeklyAppointments.get(weekNumber) + 1);
+			}
+			else
+			{
+				weeklyAppointments.put(weekNumber,1);
+				totalWeeks = totalWeeks + 1;
+			}
+			// Update monthly appointments count
+			if(monthlyAppointments.containsKey(monthNumber))
+			{
+				monthlyAppointments.put(monthNumber,monthlyAppointments.get(monthNumber) + 1);
+			}
+			else
+			{
+				monthlyAppointments.put(monthNumber,1);
+				totalMonths = totalMonths + 1;
+			}
+		}
+	}
+	else
+	{
+		// Log if there are no appointments
+		info "No appointments found for the coach.";
+	}
+	///////////////////////////
+	// Calculate daily average
+	totalDays = appointmentDatesMap.size();
+	if(totalDays > 0)
+	{
+		averageDailyAppointments = coachApptCountwCanceled / totalDays;
+	}
+	else
+	{
+		averageDailyAppointments = 0;
+	}
+	formattedDailyAverage = averageDailyAppointments.toString("0.00");
+	info "Final coachApptCountwCanceled: " + coachApptCountwCanceled;
+	info "totalDays; number of unique dates: " + totalDays;
+	info "Daily Average Appointments: " + averageDailyAppointments;
+	info "Formatted Daily Average Appointments: " + formattedDailyAverage;
+	info "totalWeeks " + totalWeeks;
+	// Calculate averages
+	numberOfUniqueDates = uniqueDates.size();
+	info "numberOfUniqueDates " + numberOfUniqueDates;
+	dailyAverageAppt = coachApptCountwCanceled / numberOfUniqueDates;
+	// Correct calculation
+	weeklyAverageAppt = coachApptCountwCanceled / totalWeeks;
+	monthlyAverageAppt = coachApptCountwCanceled / totalMonths;
+	// Log the final counters and averages
+	// 	info "Final coachApptTotalAmount: " + coachApptTotalAmount;
+	info "Daily Average Appointments: " + dailyAverageAppt;
+	info "Weekly Average Appointments: " + weeklyAverageAppt;
+	info "Monthly Average Appointments: " + monthlyAverageAppt;
+	formattedWeeklyAverage = weeklyAverageAppt.toString("0.00");
+	info "Formatted Weekly Average Appointments: " + formattedWeeklyAverage;
+	formattedMonthlyAverage = monthlyAverageAppt.toString("0.00");
+	info "Formatted Monthly Average Appointments: " + formattedMonthlyAverage;
+	///////////////////////////
+	// Define sheet details
+	sheetID = "1FDVdVYun25lW7bO-M3jAiqyh1YLcMcbSR-InFTkyDXg";
+	// Replace with your actual Google Sheet ID
+	sheetName = "CRM1";
+	// Replace with your actual sheet name
+	tableRange = "A3:T";
+	// Define the range where your table starts (e.g., A2 to T)
+	// Fetch existing data from the defined table range
+	fetchURL = "https://sheets.googleapis.com/v4/spreadsheets/" + sheetID + "/values/" + sheetName + "!" + tableRange + "?majorDimension=ROWS";
+	existingData = invokeurl
+	[
+		url :fetchURL
+		type :GET
+		connection:"gsheets"
+	];
+	// Initialize rowToUpdate
+	rowToUpdate = -1;
+	// Check if 'values' key exists in the response
+	if(existingData.containsKey("values"))
+	{
+		for each  row in existingData.get("values")
+		{
+			if(row.size() > 0 && row.get(0) == calendarID)
+			{
+				// Assuming Calendar ID is in the first column
+				rowToUpdate = existingData.get("values").indexOf(row);
+				break;
+			}
+		}
+	}
+	// Prepare monthly appointment counts
+	monthlyAppointmentCounts_ = List();
+	// Define the list of months manually
+	months = List();
+	months.add(1);
+	// January
+	months.add(2);
+	// February
+	months.add(3);
+	// March
+	months.add(4);
+	// April
+	months.add(5);
+	// May
+	months.add(6);
+	// June
+	months.add(7);
+	// July
+	months.add(8);
+	// August
+	months.add(9);
+	// September
+	months.add(10);
+	// October
+	months.add(11);
+	// November
+	months.add(12);
+	// December
+	// Loop through the list of months and add counts
+	for each  month in months
+	{
+		if(monthlyAppointments_.containsKey(month))
+		{
+			monthlyAppointmentCounts_.add(monthlyAppointments_.get(month).toString());
+		}
+		else
+		{
+			monthlyAppointmentCounts_.add("0");
+		}
+	}
+	// Prepare the data to update in Google Sheets
+	dataToUpdate = List();
+	dataToUpdate.add(calendarID);
+	dataToUpdate.add(calendarName.toString());
+	dataToUpdate.add(coachApptCount.toString());
+	dataToUpdate.add(coachApptTotalAmount.toString());
+	dataToUpdate.add(dailyAverageAppt.toString());
+	dataToUpdate.add(weeklyAverageAppt.toString());
+	dataToUpdate.add(monthlyAverageAppt.toString());
+	dataToUpdate.add(totalAmountEarn.toString());
+	// Add monthly appointment counts to the data list
+	for each  count in monthlyAppointmentCounts_
+	{
+		dataToUpdate.add(count);
+	}
+	// Wrap dataToUpdate in another list to form a 2D array
+	dataToUpdate2D = List();
+	dataToUpdate2D.add(dataToUpdate);
+	// This creates the required 2D array
+	// Convert to a 2D list (list of lists)
+	jsonData = Map();
+	jsonData.put("values",List(dataToUpdate2D));
+	// Wrap dataToUpdate in another List to create a 2D list
+	// 	info "jsonData " + jsonData;
+	// Prepare data as a JSON string
+	jsonPayload = jsonData.toString();
+	// Define URLs for updating or appending data
+	if(rowToUpdate >= 0)
+	{
+		// Update existing row
+		updateRow = rowToUpdate + 3;
+		// Adjust for the starting row of the table range
+		updateURL = "https://sheets.googleapis.com/v4/spreadsheets/" + sheetID + "/values/" + sheetName + "!A" + updateRow + ":T" + updateRow + "?valueInputOption=RAW";
+		gsheetresponse = invokeurl
+		[
+			url :updateURL
+			type :PUT
+			parameters:jsonPayload
+			connection:"gsheets"
+		];
+	}
+	else
+	{
+		// Append new row
+		appendURL = "https://sheets.googleapis.com/v4/spreadsheets/" + sheetID + "/values/" + sheetName + "!" + tableRange + ":append?valueInputOption=RAW";
+		gsheetresponse = invokeurl
+		[
+			url :appendURL
+			type :POST
+			parameters:jsonPayload
+			connection:"gsheets"
+		];
+	}
+	info gsheetresponse;
+	//////////////////
+	appointmentTypes = invokeurl
+	[
+		url :"https://acuityscheduling.com/api/v1/appointment-types"
+		type :GET
+		connection:"acuityscheduling"
+	];
+	recordImageUrl = "N/A";
+	desiredAppointmentTypeId = appointmentTypeID;
+	coachBio = "N/A";
+	coachNameType = "N/A";
+	schedulingUrl = "N/A";
+	duration = 0;
+	price = 0.00;
+	// Replace with the actual ID you are looking for
+	if(appointmentTypes != null && appointmentTypes.size() > 0)
+	{
+		// Find the appointment type by ID
+		for each  appointmentType in appointmentTypes
+		{
+			if(appointmentType.get("id") == desiredAppointmentTypeId)
+			{
+				recordImageUrl = ifnull(appointmentType.get("image"),"N/A");
+				coachNameType = ifnull(appointmentType.get("name"),"N/A");
+				coachBio = ifnull(appointmentType.get("description"),"N/A");
+				duration = ifnull(toNumber(appointmentType.get("duration")),0);
+				price = ifnull(toDecimal(appointmentType.get("price")),0.0);
+				schedulingUrl = ifnull(appointmentType.get("schedulingUrl"),"N/A");
+				break;
+			}
+		}
+	}
+	// Use default photo if no image URL is found
+	if(recordImageUrl == "" || recordImageUrl == "N/A")
+	{
+		recordImageUrl = "https://static.wixstatic.com/media/29facd_d933761545d64e5faa46ed4918972f16~mv2.png/v1/fill/w_80,h_45,al_c,q_85,usm_0.66_1.00_0.01,enc_auto/moji-love.png";
+	}
+	// 	info "Record Image URL: " + recordImageUrl;
+	// Fetch the image
+	photo = invokeurl
+	[
+		url :recordImageUrl
+		type :GET
+	];
+	// Save the photo as a file
+	photo.setParamName("file");
+	// 	info "photo " + photo;
+	// Initialize coachId
+	coachId = "N/A";
+	// Search for a coach record using Calendar_ID
+	coachSearchCriteria = "(Calendar_ID:equals:" + calendarId + ")";
+	// 	info "coachSearchCriteria: " + coachSearchCriteria;
+	coachSearch = zoho.crm.searchRecords("Coaches",coachSearchCriteria);
+	// 	info "coachSearch: " + coachSearch;
+	if(coachSearch.isEmpty())
+	{
+		// Coach does not exist, create a new coach record
+		coachMap = Map();
+		coachMap.put("Calendar_ID",calendarId);
+		coachMap.put("Name",calendarName);
+		coachMap.put("Email",calendarEmails.get(0));
+		coachMap.put("Record_Image","N/A");
+		// Placeholder, will be updated later
+		// Add secondary email if available
+		if(calendarEmails.size() > 1)
+		{
+			coachMap.put("Secondary_Email",calendarEmails.get(1));
+		}
+		else
+		{
+			coachMap.put("Secondary_Email",null);
+		}
+		coachMap.put("Description",calendarDescription);
+		coachMap.put("Timezone",calendarTimezone);
+		coachMap.put("coachApptTotalAmount",coachApptTotalAmount);
+		coachMap.put("coachApptCount",coachApptCount);
+		coachMap.put("Total_Earnings",totalAmountEarn);
+		coachMap.put("Average_Daily_Appointment",formattedDailyAverage);
+		coachMap.put("Average_Weekly_Appointment",formattedWeeklyAverage);
+		coachMap.put("Average_Monthly_Appointment",formattedMonthlyAverage);
+		//
+		// Initialize the subform data
+		otherCoachInfoList = List();
+		// Check if schedulingUrl is "N/A" and set to null if true
+		if(schedulingUrl == "N/A")
+		{
+			schedulingUrl = null;
+		}
+		otherCoachInfoList.add({"Bio":coachBio,"CoachID":desiredAppointmentTypeId,"NameType":coachNameType,"Duration":duration,"Price":price,"Scheduling_URL":schedulingUrl});
+		// 		info "otherCoachInfoList " + otherCoachInfoList;
+		// Add subform data to coachMap
+		coachMap.put("Other_Coach_Info",otherCoachInfoList);
+		// 		coachMap.put("Record_Image",photo);
+		// Use the actual URL field from photoResponse
+		if(photo != null)
+		{
+			coachMap.put("Record_Image",photo);
+		}
+		coachResponse = zoho.crm.createRecord("Coaches",coachMap);
+		// 		info "coachResponse: " + coachResponse;
+		if(coachResponse.get("id") != null)
+		{
+			coachId = coachResponse.get("id");
+		}
+		else
+		{
+			info "Failed to create Coach.";
+			return;
+		}
+	}
+	else
+	{
+		// Coach exists, update the existing coach record
+		coachId = coachSearch.get(0).get("id");
+		// Fetch existing subform data
+		coachRecord = zoho.crm.getRecordById("Coaches",coachId);
+		existingSubformData = coachRecord.get("Other_Coach_Info");
+		if(existingSubformData == null)
+		{
+			existingSubformData = List();
+		}
+		// Check for duplicates and update or append new subform data
+		isDuplicate = false;
+		// Check if schedulingUrl is "N/A" and set to null if true
+		if(schedulingUrl == "N/A")
+		{
+			schedulingUrl = null;
+		}
+		for each  existingSubformEntry in existingSubformData
+		{
+			if(existingSubformEntry.get("CoachID") == desiredAppointmentTypeId)
+			{
+				isDuplicate = true;
+				// Update the existing entry if needed
+				existingSubformEntry.put("Bio",coachBio);
+				existingSubformEntry.put("NameType",coachNameType);
+				existingSubformEntry.put("Duration",duration);
+				existingSubformEntry.put("Price",price);
+				existingSubformEntry.put("Scheduling_URL",schedulingUrl);
+				break;
+			}
+		}
+		if(!isDuplicate)
+		{
+			// Append new subform data if not a duplicate
+			newSubformData = {"Bio":coachBio,"CoachID":desiredAppointmentTypeId,"NameType":coachNameType,"Duration":duration,"Price":price,"Scheduling_URL":schedulingUrl};
+			existingSubformData.add(newSubformData);
+		}
+		// Update totalAmountPaid and appointmentCount for existing coach
+		coachMap = Map();
+		coachMap.put("coachApptTotalAmount",coachApptTotalAmount);
+		coachMap.put("coachApptCount",coachApptCount);
+		coachMap.put("Total_Earnings",totalAmountEarn);
+		coachMap.put("Average_Daily_Appointment",formattedDailyAverage);
+		coachMap.put("Average_Weekly_Appointment",formattedWeeklyAverage);
+		coachMap.put("Average_Monthly_Appointment",formattedMonthlyAverage);
+		coachMap.put("Other_Coach_Info",existingSubformData);
+		updateCoachResponse = zoho.crm.updateRecord("Coaches",coachId,coachMap);
+		// 		info "updateCoachResponse: " + updateCoachResponse;
+	}
+	// Upload the image to Zoho CRM
+	photoResponse = invokeurl
+	[
+		url :"https://www.zohoapis.com/crm/v3/Coaches/" + coachId + "/photo"
+		type :POST
+		files:photo
+		connection:"zoho_oauth"
+	];
+	// 	info "photoResponse " + photoResponse;
+	// Update the coach record with the uploaded image URL if needed
+	if(coachId != "N/A")
+	{
+		coachMap = Map();
+		// 		coachMap.put("Record_Image",photo);
+		if(photo != null)
+		{
+			coachMap.put("Record_Image",photo);
+		}
+		// Use the actual URL field from photoResponse
+		updateResponse = zoho.crm.updateRecord("Coaches",coachId,coachMap);
+		// 		info "updateResponse: " + updateResponse;
+	}
+	//
+}
+else
+{
+	info "The API response is null.";
+}
