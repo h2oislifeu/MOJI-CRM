@@ -1,0 +1,63 @@
+//StringCanceledAppointmentList(Int id)
+
+// Step 1: Fetch the email from the Lead record
+leadRecord = zoho.crm.getRecordById("Leads",id);
+email = leadRecord.get("Email");
+info email;
+// Check if email is empty
+if(email == null || email.isEmpty())
+{
+	return "Email not found in the Lead record.";
+}
+// Step 3: Invoke Acuity Scheduling API to fetch canceled appointments
+responseCanceled = invokeurl
+[
+	url :"https://acuityscheduling.com/api/v1/appointments"
+	type :GET
+	parameters:{"email":email,"canceled":"true"}
+	connection:"acuityscheduling"
+];
+if(responseCanceled != null)
+{
+	canceledAppointments = responseCanceled;
+	if(canceledAppointments != null && canceledAppointments.size() > 0)
+	{
+		canceledXmlContent = "<canceledRecord>";
+		canceledRowIndex = 0;
+		for each  canceledAppointment in canceledAppointments
+		{
+			try 
+			{
+				canceledAppointmentDate = canceledAppointment.get("datetime").toDate();
+			}
+			catch (e)
+			{
+				info "Error parsing date: " + e;
+				continue;
+			}
+			canceledAppointmentID = canceledAppointment.get("id");
+			canceledFirstName = canceledAppointment.get("firstName");
+			canceledLastName = canceledAppointment.get("lastName");
+			canceledType = canceledAppointment.get("type");
+			canceledDateTimeInfo = canceledAppointment.get("date") + " " + canceledAppointment.get("time") + " - " + canceledAppointment.get("endTime");
+			canceledXmlContent = canceledXmlContent + "<row no=\"" + canceledRowIndex + "\">";
+			canceledXmlContent = canceledXmlContent + "<FL val=\"Appointment ID\">" + canceledAppointmentID + "</FL>";
+			canceledXmlContent = canceledXmlContent + "<FL val=\"Full Name\">" + canceledFirstName + " " + canceledLastName + "</FL>";
+			canceledXmlContent = canceledXmlContent + "<FL val=\"Coach\">" + canceledType + "</FL>";
+			canceledXmlContent = canceledXmlContent + "<FL val=\"DateTime\">" + canceledDateTimeInfo + "</FL>";
+			canceledXmlContent = canceledXmlContent + "</row>";
+			canceledRowIndex = canceledRowIndex + 1;
+		}
+		canceledXmlContent = canceledXmlContent + "</canceledRecord>";
+		info canceledXmlContent;
+		return canceledXmlContent;
+	}
+	else
+	{
+		return "<canceledRecord><row no=\"0\"><FL val=\"\">No canceled appointments found for the provided record.</FL></row></canceledRecord>";
+	}
+}
+else
+{
+	return "<canceledRecord><row no=\"0\"><FL val=\"\">Failed to fetch canceled appointments.</FL></row></canceledRecord>";
+}
