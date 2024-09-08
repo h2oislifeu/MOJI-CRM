@@ -1,0 +1,211 @@
+//voidapptCanceled(String crmAPIRequest)
+
+// Extract the body string from the request
+body = crmAPIRequest.get("body");
+info body;
+// Extract the "id" parameter from the body string
+idStartIndex = body.indexOf("id=") + 3;
+idEndIndex = body.indexOf("&",idStartIndex);
+if(idEndIndex == -1)
+{
+	id = body.substring(idStartIndex);
+}
+else
+{
+	id = body.substring(idStartIndex,idEndIndex);
+}
+// Fetch appointment details by appointment_id
+response = invokeurl
+[
+	url :"https://acuityscheduling.com/api/v1/appointments/" + id
+	type :GET
+	connection:"acuityscheduling"
+];
+if(response != null && response.get("id") != null)
+{
+	appointmentId = response.get("id");
+	isCanceled = response.get("canceled");
+	// Check if the appointment is canceled
+	if(isCanceled == true)
+	{
+		// Search for the corresponding meeting in Zoho CRM
+		meetingSearch = zoho.crm.searchRecords("Events","(Acuity_Appointment_ID:equals:" + appointmentId + ")");
+		if(!meetingSearch.isEmpty())
+		{
+			meetingId = meetingSearch.get(0).get("id");
+			// Prepare the request body as a Map for canceling the meeting
+			cancelData = Map();
+			dataList = list();
+			dataMap = Map();
+			dataMap.put("send_cancelling_mail",false);
+			// Set to true if you want to notify participants
+			dataList.add(dataMap);
+			cancelData.put("data",dataList);
+			// Cancel the meeting record in Zoho CRM
+			cancelMeeting = invokeurl
+			[
+				url :"https://www.zohoapis.com/crm/v6/Events/" + meetingId + "/actions/cancel"
+				type :POST
+				parameters:cancelData.toString()
+				connection:"zoho_oauth"
+			];
+			info "cancelMeeting response " + cancelMeeting;
+			info "Meeting with ID " + meetingId + " has been tagged as canceled.";
+			// Tagging the canceled meeting
+			tag1 = Map();
+			tag1.put("name","Meeting Canceled");
+			tag1.put("color_code","#969696");
+			// Example color code for "Meeting Canceled"
+			tags_list = list();
+			tags_list.add(tag1);
+			tagParam = Map();
+			tagParam.put("tags",tags_list);
+			recordIDs = list();
+			recordIDs.add(meetingId);
+			tagParam.put("ids",recordIDs);
+			tagResponse = invokeurl
+			[
+				url :"https://www.zohoapis.com/crm/v6/Events/actions/add_tags"
+				type :POST
+				parameters:tagParam.toString()
+				connection:"zoho_oauth"
+			];
+			info "Tagging Response: " + tagResponse;
+		}
+		else
+		{
+			info "No meeting found with Acuity Appointment ID: " + appointmentId;
+		}
+	}
+	else
+	{
+		info "Appointment with ID " + appointmentId + " is not canceled.";
+	}
+}
+else
+{
+	info "The API response is null.";
+}
+//////////////////////////////////////////////////////
+// // Extract the body string from the request
+// body = crmAPIRequest.get("body");
+// info body;
+// // Extract the "id" parameter from the body string
+// idStartIndex = body.indexOf("id=") + 3;
+// idEndIndex = body.indexOf("&",idStartIndex);
+// if(idEndIndex == -1)
+// {
+// 	id = body.substring(idStartIndex);
+// }
+// else
+// {
+// 	id = body.substring(idStartIndex,idEndIndex);
+// }
+// // Fetch appointment details by appointment_id
+// response = invokeurl
+// [
+// 	url :"https://acuityscheduling.com/api/v1/appointments/" + id
+// 	type :GET
+// 	connection:"acuityscheduling"
+// ];
+// if(response != null && response.get("id") != null)
+// {
+// 	appointmentId = response.get("id");
+// 	isCanceled = response.get("canceled");
+// 	// Check if the appointment is canceled
+// 	if(isCanceled == true)
+// 	{
+// 		// Search for the corresponding meeting in Zoho CRM
+// 		meetingSearch = zoho.crm.searchRecords("Events","(Acuity_Appointment_ID:equals:" + appointmentId + ")");
+// 		if(!meetingSearch.isEmpty())
+// 		{
+// 			meetingId = meetingSearch.get(0).get("id");
+// 			// Prepare the request body as a Map
+// 			cancelData = Map();
+// 			dataList = List();
+// 			dataMap = Map();
+// 			dataMap.put("send_cancelling_mail",true);
+// 			// Set to true if you want to notify participants
+// 			dataList.add(dataMap);
+// 			cancelData.put("data",dataList);
+// 			// Cancel the meeting record in Zoho CRM instead of deleting it
+// 			cancelMeeting = invokeurl
+// 			[
+// 				url :"https://www.zohoapis.com/crm/v6/Events/" + meetingId + "/actions/cancel"
+// 				type :POST
+// 				parameters:cancelData.toString()
+// 				connection:"zoho_oauth"
+// 			];
+// 			info "Meeting with ID " + meetingId + " has been tagged as canceled.";
+// 		}
+// 		else
+// 		{
+// 			info "No meeting found with Acuity Appointment ID: " + appointmentId;
+// 		}
+// 	}
+// 	else
+// 	{
+// 		info "Appointment with ID " + appointmentId + " is not canceled.";
+// 	}
+// }
+// else
+// {
+// 	info "The API response is null.";
+// }
+////////////////////////////////////////////////////////////////////
+// // Extract the body string from the request
+// body = crmAPIRequest.get("body");
+// info body;
+// // Extract the "id" parameter from the body string
+// idStartIndex = body.indexOf("id=") + 3;
+// idEndIndex = body.indexOf("&",idStartIndex);
+// if(idEndIndex == -1)
+// {
+// 	id = body.substring(idStartIndex);
+// }
+// else
+// {
+// 	id = body.substring(idStartIndex,idEndIndex);
+// }
+// // Fetch appointment details by appointment_id
+// response = invokeurl
+// [
+// 	url :"https://acuityscheduling.com/api/v1/appointments/" + id
+// 	type :GET
+// 	connection:"acuityscheduling"
+// ];
+// if(response != null && response.get("id") != null)
+// {
+// 	appointmentId = response.get("id");
+// 	isCanceled = response.get("canceled");
+// 	// Check if the appointment is canceled
+// 	if(isCanceled == true)
+// 	{
+// 		// Search for the corresponding meeting in Zoho CRM
+// 		meetingSearch = zoho.crm.searchRecords("Events","(Acuity_Appointment_ID:equals:" + appointmentId + ")");
+// 		if(!meetingSearch.isEmpty())
+// 		{
+// 			meetingId = meetingSearch.get(0).get("id");
+// 			// Delete the meeting record in Zoho CRM
+// 			deleteMeeting = invokeurl
+// 			[
+// 				url :"https://www.zohoapis.com/crm/v2/Events/" + meetingId
+// 				type :DELETE
+// 				connection:"zoho_oauth"
+// 			];
+// 			info "Meeting with ID " + meetingId + " has been deleted.";
+// 		}
+// 		else
+// 		{
+// 			info "No meeting found with Acuity Appointment ID: " + appointmentId;
+// 		}
+// 	}
+// 	else
+// 	{
+// 		info "Appointment with ID " + appointmentId + " is not canceled.";
+// 	}
+// }
+// else
+// {
+// 	info "The API response is null.";
+// }
